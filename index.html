@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>RISC-V 二进制开发在线工具</title>
+</head>
+<body>
+<div>
+<p>输入根页表gdb命令的输出：</p>
+<p>
+<textarea id="root-gdb" rows="4" cols="60" oninput="onGdbPageTableInput(this)">
+(gdb) x/16g 0x80420000
+0x80420000:     0x0000000000000000      0x0000000000000000
+0x80420010:     0x0000000020108401      0x0000000000000000
+</textarea>
+</p>
+<p>可选地，输入子页表gdb命令的输出：</p>
+<p>
+<textarea id="child-gdb" rows="8" cols="60" oninput="onGdbPageTableInput(this)">
+(gdb) x/16g 0x80421000
+0x80421000:     0x000000002000000f      0x000000002008000f
+0x80421010:     0x0000000020109001      0x0000000000000000 
+</textarea>
+</p>
+<pre id="gdb-page-table-info">
+    （请输入）
+</pre>
+<p>
+请先输入以下gdb命令，查看satp的值。（仅支持64位目标系统）
+<pre>info register satp</pre>
+然后，粘贴输出到这个文本框。
+</p>
+<p>
+<textarea rows="3" cols="60" oninput="onGdbSatpInput(this)">
+(gdb) info register satp
+satp           0x8000000000080420       -9223372036854250464
+</textarea>
+</p>
+<p>
+根据输出，当前的页表模式为<a id="mode">（请输入）</a>，
+空间编号是<a id="asid">（请输入）</a>，
+基地址页号是<a id="ppn">（请输入）</a>。
+<br>
+你需要填入用于查询根页表的gdb命令是：<pre id="gdb-get-page">（请输入）</pre>
+</p>
+</div>
+<div>
+    版权所有©️2021 无相之风战队
+</div>
+<script>
+function onGdbSatpInput(obj) {
+    var string = obj.value;
+    string.trim().split('\n').forEach(function(line, idx) {
+        if(!line.trim().startsWith("satp")) {
+            return;
+        }
+        var arr = line.trim().split(/[ ]+/);
+        if (typeof(arr[1]) == undefined){
+            return;
+        }
+        var satp_value = BigInt(arr[1]);
+        var mode = satp_value >> BigInt(60);
+        var asid = (satp_value >> BigInt(44)) & BigInt((2**16) - 1);
+        var ppn = satp_value & BigInt((2**44) - 1);
+        document.getElementById("mode").innerText = mode;
+        document.getElementById("asid").innerText = asid;
+        document.getElementById("ppn").innerText = "0x"+ppn.toString(16);
+        document.getElementById("gdb-get-page").innerText = "x/4g 0x"+ppn.toString(16)+"000";
+    })
+}
+function onGdbPageTableInput(obj) {
+    var string = document.getElementById("root-gdb").value;
+    var current_base = BigInt(0);
+    var out_string = "";
+    var levels = new Map();
+    var bases = new Map();
+    string.trim().split('\n').forEach(function(line, idx) {
+        if(line.trim().startsWith("(gdb)")) {
+            var arr = line.trim().split(/[ ]+/);
+            current_base = BigInt(arr[2]);
+            // alert(current_base.toString(16));
+        }
+        if(!line.trim().startsWith("0x")) {
+            return;
+        }
+        var arr = line.trim().split(/[ ]+/);
+        var begin = arr[0].substr(0,arr[0].length-1);
+        var line_addr_begin = BigInt(begin);
+        var line_addr_shift = line_addr_begin - current_base;
+        var pte_index = line_addr_shift / BigInt(8);
+        line.trim().split(/[ ]+/).forEach(function(value, idx) {
+            if(idx == 0) {
+                return;
+            }
+            // alert(BigInt(value))
+            if(BigInt(value) == BigInt(0)) {
+                return;
+            }
+            var idx_cur_value = BigInt(idx - 1) + pte_index;
+            var pte = BigInt(value);
+            var ppn = "0x" + (pte >> BigInt(10)).toString(16);
+            var vpn_start = "0x" + (idx_cur_value * BigInt(0x40000)).toString(16);
+            var vpn_end = "0x" + ((idx_cur_value + BigInt(1)) * BigInt(0x40000) - BigInt(1)).toString(16);
+            var pa = (pte >> BigInt(10)) * BigInt(0x1000);
+            levels.set(pa, 0); // 第0等级
+            var va = idx_cur_value * BigInt(0x40000);
+            bases.set(pa, va);
+            var flags = getFlagsStringFromPte(pte);
+            out_string = out_string + 
+                "虚拟页 " + vpn_start + " ~ " + vpn_end + " → 物理页 " + ppn + "，标签 "+flags+"\n";
+        })
+    })
+    var current_level = BigInt(0);
+    document.getElementById("child-gdb").value.trim().split('\n').forEach(function(line, idx) {
+        if(line.trim().startsWith("(gdb)")) {
+            var arr = line.trim().split(/[ ]+/);
+            current_base = BigInt(arr[2]);
+            if (typeof(levels.get(current_base)) == undefined){
+                current_level = BigInt(0);
+            } else {
+                current_level = BigInt(levels.get(current_base) + 1);
+            }
+            // out_string = out_string + "Base = "+current_base+" Level = "+current_level +"\n";
+            // alert(current_base.toString(16));
+        }
+
+        if(!line.trim().startsWith("0x")) {
+            return;
+        }
+        var arr = line.trim().split(/[ ]+/);
+        var begin = arr[0].substr(0,arr[0].length-1);
+        var line_addr_begin = BigInt(begin);
+        var line_addr_shift = line_addr_begin - current_base;
+        var pte_index = line_addr_shift / BigInt(8);
+        line.trim().split(/[ ]+/).forEach(function(value, idx) {
+            if(idx == 0) {
+                return;
+            }
+            // alert(BigInt(value))
+            if(BigInt(value) == BigInt(0)) {
+                return;
+            }
+            var idx_cur_value = BigInt(idx - 1) + pte_index;
+            var pte = BigInt(value);
+            var ppn = "0x" + (pte >> BigInt(10)).toString(16);
+            var level_mul = BigInt(0x40000);
+            if(current_level == BigInt(1)) {
+                level_mul = BigInt(0x200);
+            } else {
+                level_mul = BigInt(1);
+            }
+            var cur_base = bases.get(current_base);
+            var vpn_start = "0x" + (cur_base + idx_cur_value * level_mul).toString(16);
+            var vpn_end = "0x" + (cur_base + (idx_cur_value + BigInt(1)) * level_mul - BigInt(1)).toString(16);
+            var pa = cur_base + (pte >> BigInt(10)) * BigInt(0x1000);
+            levels.set(pa, current_level + BigInt(1)); // 第0等级
+            var va = cur_base + idx_cur_value * level_mul;
+            bases.set(pa, va);
+            var flags = getFlagsStringFromPte(pte);
+            out_string = out_string + 
+                "虚拟页 " + vpn_start + " ~ " + vpn_end + " → 物理页 " + ppn + "，标签 "+flags+"\n";
+        })
+    })
+    document.getElementById("gdb-page-table-info").innerText = out_string;
+}
+function getFlagsStringFromPte(pte) {
+    var flags = "";
+    if((pte & BigInt(0x1)) != BigInt(0)) {
+        flags = flags + "V";
+    } else {
+        flags = flags + "!V";
+    }
+    if((pte & BigInt(0x2)) != BigInt(0)) {
+        flags = flags + "R";
+    }
+    if((pte & BigInt(0x4)) != BigInt(0)) {
+        flags = flags + "W";
+    }
+    if((pte & BigInt(0x8)) != BigInt(0)) {
+        flags = flags + "X";
+    }
+    if((pte & BigInt(0x10)) != BigInt(0)) {
+        flags = flags + "U";
+    }
+    if((pte & BigInt(0x20)) != BigInt(0)) {
+        flags = flags + "G";
+    }
+    if((pte & BigInt(0x40)) != BigInt(0)) {
+        flags = flags + "A";
+    }
+    if((pte & BigInt(0x80)) != BigInt(0)) {
+        flags = flags + "D";
+    }
+    if((pte & BigInt(0x2)) == BigInt(0) 
+        && (pte & BigInt(0x4)) == BigInt(0)
+        && (pte & BigInt(0x8)) == BigInt(0)) {
+        flags = flags + "（指向子页表）";
+    }
+    return flags;
+}
+</script>
+</body>
+</html>
