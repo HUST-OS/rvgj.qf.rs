@@ -68,7 +68,7 @@ function onGdbSatpInput(obj) {
         document.getElementById("mode").innerText = mode;
         document.getElementById("asid").innerText = asid;
         document.getElementById("ppn").innerText = "0x"+ppn.toString(16);
-        document.getElementById("gdb-get-page").innerText = "x/4g 0x"+ppn.toString(16)+"000";
+        document.getElementById("gdb-get-page").innerText = "x/16gx 0x"+ppn.toString(16)+"000";
     })
 }
 function onGdbPageTableInput(obj) {
