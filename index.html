@@ -58,7 +58,7 @@ function onGdbSatpInput(obj) {
             return;
         }
         var arr = line.trim().split(/[ ]+/);
-        if (typeof(arr[1]) == undefined){
+        if (arr[1] === void 0){
             return;
         }
         var satp_value = BigInt(arr[1]);
@@ -106,8 +106,8 @@ function onGdbPageTableInput(obj) {
             var vpn_end = "0x" + ((idx_cur_value + BigInt(1)) * BigInt(0x40000) - BigInt(1)).toString(16);
             var pa = (pte >> BigInt(10)) * BigInt(0x1000);
             levels.set(pa, 0); // 第0等级
-            var va = idx_cur_value * BigInt(0x40000);
-            bases.set(pa, va);
+            var vpn_start_int = idx_cur_value * BigInt(0x40000);
+            bases.set(pa, vpn_start_int);
             var flags = getFlagsStringFromPte(pte);
             out_string = out_string + 
                 "虚拟页 " + vpn_start + " ~ " + vpn_end + " → 物理页 " + ppn + "，标签 "+flags+"\n";
@@ -118,12 +118,14 @@ function onGdbPageTableInput(obj) {
         if(line.trim().startsWith("(gdb)")) {
             var arr = line.trim().split(/[ ]+/);
             current_base = BigInt(arr[2]);
-            if (typeof(levels.get(current_base)) == undefined){
+
+            if (levels.get(current_base) === void 0){
                 current_level = BigInt(0);
             } else {
-                current_level = BigInt(levels.get(current_base) + 1);
+                // alert(levels.get(current_base));
+                current_level = BigInt(levels.get(current_base)) + BigInt(1);
             }
-            // out_string = out_string + "Base = "+current_base+" Level = "+current_level +"\n";
+            // out_string = out_string + "Base = "+current_base.toString(16)+" Level = "+current_level +"\n";
             // alert(current_base.toString(16));
         }
 
@@ -152,13 +154,20 @@ function onGdbPageTableInput(obj) {
             } else {
                 level_mul = BigInt(1);
             }
-            var cur_base = bases.get(current_base);
+            var cur_base = BigInt(0);
+            if(bases.get(current_base) == void 0) {
+                
+            } else {
+                cur_base = bases.get(current_base);
+            }
+            // out_string = out_string + "base = " + cur_base.toString(16) + "\n";
             var vpn_start = "0x" + (cur_base + idx_cur_value * level_mul).toString(16);
             var vpn_end = "0x" + (cur_base + (idx_cur_value + BigInt(1)) * level_mul - BigInt(1)).toString(16);
-            var pa = cur_base + (pte >> BigInt(10)) * BigInt(0x1000);
+            var pa = (pte >> BigInt(10)) * BigInt(0x1000);
             levels.set(pa, current_level + BigInt(1)); // 第0等级
             var va = cur_base + idx_cur_value * level_mul;
             bases.set(pa, va);
+            // out_string = out_string + "pa = " + pa.toString(16) + " va = " + va.toString(16) + "\n";
             var flags = getFlagsStringFromPte(pte);
             out_string = out_string + 
                 "虚拟页 " + vpn_start + " ~ " + vpn_end + " → 物理页 " + ppn + "，标签 "+flags+"\n";
