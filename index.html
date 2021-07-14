@@ -166,7 +166,10 @@ function onGdbPageTableInput(obj) {
             var pa = (pte >> BigInt(10)) * BigInt(0x1000);
             levels.set(pa, current_level + BigInt(1)); // 第0等级
             var va = cur_base + idx_cur_value * level_mul;
+            if(pa != va * BigInt(0x1000)) {
             bases.set(pa, va);
+            }
+            // out_string = out_string + "idx_cur_value = "+idx_cur_value + " mul = "+level_mul + " base = " + cur_base.toString(16) + "\n";
             // out_string = out_string + "pa = " + pa.toString(16) + " va = " + va.toString(16) + "\n";
             var flags = getFlagsStringFromPte(pte);
             out_string = out_string + 
